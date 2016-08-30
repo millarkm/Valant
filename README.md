@@ -4,8 +4,11 @@ Coding Exercise
 Schedule Tracking
 
 1030p-130a  assumptions, design, function prototype
+
 830a-1030a  code, test, gen 1M row test data
+
 1030a-1130a documents
+
 1130a       github
 
 Use Case
