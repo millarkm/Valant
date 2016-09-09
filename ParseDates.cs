@@ -5,7 +5,8 @@ using System.Text;
 using System.Threading.Tasks;
 //
 using System.Globalization;
-using System.IO;
+using System.IO; //ReadFile
+using System.Diagnostics; //Debugger
 
 namespace DataTools
 {
@@ -13,11 +14,11 @@ namespace DataTools
     {
         /*
          * Name:
-         *      ParseDates
+         *      ParseDates [<filename>]
          *      
          * Description: 
-         *      Open a text datafile and parse through the date column returning a list of valid dates
-         *      Send the output to the screen with a count of the number of good dates found
+         *      Open a text datafile and parse through the records looking for valid dates
+         *      Send a list of valid dates to the screen
          *      
          * Input args:
          *      arg0    file name
@@ -26,7 +27,7 @@ namespace DataTools
          *      Kevin Millar
          *      
          * Revisions:
-         *      v0   30Aug2016
+         *      v0   08Sep2016
          *
          * REFACTOR:
          *      input args
@@ -34,97 +35,123 @@ namespace DataTools
          *      log invalid records to error file
         */
 
-        //REFACTOR as input args
-        const string kFname = "MarketingDataFile.txt"; //hard coded file name in case not input args are supplied
+        const string kFname = "MarketingDataFile.txt"; //default file name in case no input arg is supplied
         const string kDatePattern = "MMddyyyy"; //expected format of date being inspecting
+        const int kDateSize = 8; //MMDDYYYY
         const int kMinYear = 2000; //set the minimum acceptable year
-        const int kDateFieldIndex = 1; //zero based index for location of date field
-        static string[] delim = new string[] {"\t"}; //record delimiter
-        static DateTime maxDate = DateTime.Today; // dates greater then or equal to today are ignored
+        const string kErrmsgFileNotFound = "Data file not found.";
+        static DateTime maxDate = DateTime.Today; // dates >= today are ignored
 
-
-        static bool isValidDate(string value, int minyear, out DateTime dt_out)
+        static bool isValidDate(string value, int minyear, DateTime maxyear, out DateTime dt_out)
         {
-            DateTime dt = DateTime.Today;
-            bool result = true;
+            // Determine if a passed in string is a valid date:
+            //  - must match the kDatePattern format
+            //  - must be within a user defined acceptable date range based on 'minyear' param
 
-            try 
-	        {
+            DateTime dt = DateTime.Today;
+            bool result = false;
+
+            try
+            {
                 if (DateTime.TryParseExact(value, kDatePattern, System.Globalization.CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
                 {
-                    if (dt.Year < minyear)
+                    if (dt.Year >= minyear & dt.Year <= maxyear.Year)
                     {
-                        result = false;
+                        result = true;
                     }
                 }
-                else
-                {
-                    result = false;
-                }
-	        }
-	        catch (Exception)
-	        {
-		        result = false;
-	        }
+            }
+            catch (Exception ex)
+            {
+                string x = ex.Message;
+                //NoOp - invalid date
+            }
             finally
             {
                 dt_out = dt;
             }
             return result;
         }
+
         static List<string> ParseLines(string fname, DateTime maxdate)
         {
+            // open a disk file and parse thru the data looking for valid dates
+
             DateTime validDate;
             string ckDate;
-            string[] rec;
             List<string> result = new List<string>();
+            int pos = 0;
 
-                var lines = File.ReadLines(fname);
-
-                foreach (var line in lines)
+            try
+            {
+                IEnumerable<string> lines2 = File.ReadLines(fname);
+                try
                 {
-                    if(line.Length == 0)
-                    {
-                        continue; //skip empty lines
-                    }
-                    try
-                    {
-                        rec = line.Split(delim, StringSplitOptions.None); //attempt to split the line into an array of values, pulling out the date field
+                    string dates = String.Join("", lines2); // combine all lines read in into a single string for walking
 
-                        if (rec.Length >= kDateFieldIndex) //handles missing field
-                        {
-                            ckDate = rec[kDateFieldIndex];
-                            if (isValidDate(ckDate, kMinYear, out validDate))
-                            {
-                                // valid date format
-                                // if the date is before max date, then then keep
-                                if (validDate < maxdate)
-                                {
-                                    result.Add(ckDate);
-                                }
-                            }
-                            else
-                            {
-                                //NoOp - invalid date skipped
-                            }
-                        }
-                    }
-                    catch (Exception)
+                    // iterate the string reading a chunk at a time
+                    while (pos <= dates.Length - kDateSize)
                     {
-                        //REFACTOR - log to error file
-                        //NoOp invalid format or missing data is skipped
-                    }
+                        ckDate = dates.Substring(pos, kDateSize); // parse the next chunk
+
+                        // validate the parsed chunk
+                        if (isValidDate(ckDate, kMinYear, maxdate, out validDate))
+                        {
+                            // valid date format
+                            result.Add(ckDate);
+                        }
+                        else
+                        {
+                            // NoOp - invalid date skipped
+                        }
+                        
+                        pos++;
+                    }                        
                 }
+                catch (Exception)
+                {
+                    // REFACTOR - log to error file
+                    // NoOp invalid format or missing data is skipped
+                }
+        
+            }
+            catch (FileNotFoundException)
+            {
+
+                Console.WriteLine("{0} Filename: {1}", kErrmsgFileNotFound, kFname);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
+            Console.WriteLine("Numer of checks: {0}", pos.ToString()); //DEBUG
             return result;
         }
+
         static void OutputList(List<string> list)
         {
-            //REFACTOR to save output to a file
-            foreach(var line in list)
+            // print the input list to stdout
+            foreach (var line in list)
             {
                 Console.WriteLine(line);
             }
-            Console.WriteLine(list.Count());
+            Console.WriteLine("Number of valid dates: {0}",list.Count());
+        }
+
+        static List<string> GenTickDates()
+        {
+            // temp utility to look at the ticks of recent dates
+            DateTime dt = DateTime.Now;
+            List<string> result = new List<string>();
+            
+            int k = 0;
+            while (k < 20)
+            {
+                result.Add(dt.Date.Ticks.ToString());
+                dt = dt.AddDays(-1);
+                k++;
+            }
+            return result;
         }
 
         static void Main(string[] args)
@@ -132,17 +159,23 @@ namespace DataTools
             string fname = kFname;
             List<string> dateList = new List<string>();
 
-            //Get input args[0]: path to input file
+            // Get input args[0]: path to input file
             if (args.Length > 0 && args[0] != String.Empty)
             {
                 fname = args[0];
             }
+            else
+            {
+                fname = kFname; // default file name
+            }
 
-            dateList = ParseLines(kFname, maxDate);
+            //TEST dateList = GenTickDates();
+            dateList = ParseLines(fname, maxDate);
             OutputList(dateList);
 
-            Console.WriteLine("Press RETURN to exit."); //allow user to see output
-            Console.ReadLine(); //pause
+
+             Console.WriteLine("Press return to continue");
+             Console.ReadLine();
         }
     }
 }
